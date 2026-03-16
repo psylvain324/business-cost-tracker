@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import fs from "node:fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { CostItem } from "../../shared/api-types";
@@ -11,7 +12,6 @@ const DB_PATH =
 
 function ensureDataDir() {
   const dir = path.dirname(DB_PATH);
-  const fs = require("node:fs");
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
