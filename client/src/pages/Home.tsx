@@ -14,7 +14,10 @@ import {
   BarChart3,
   Shield,
   Download,
+  RefreshCw,
+  Loader2,
 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useCosts } from "@/contexts/CostContext";
 import { formatCurrency, getTotalMonthlyAll, getTotalAnnualAll, getTotalStartupCost } from "@/lib/costData";
@@ -59,7 +62,7 @@ function exportToCSV(costs: Array<{
 }
 
 export default function Home() {
-  const { costs } = useCosts();
+  const { costs, isLoading, error, refetch } = useCosts();
 
   return (
     <div className="min-h-screen bg-background">
@@ -154,10 +157,28 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Error banner */}
+      {error && (
+        <div className="container py-2">
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 flex items-center justify-between gap-4">
+            <p className="text-sm text-destructive">{error}</p>
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="shrink-0">
+              Retry
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="container py-6 space-y-6">
-        {/* Summary Cards */}
-        <SummaryCards />
+        {isLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="animate-pulse text-muted-foreground text-sm">Loading costs…</div>
+          </div>
+        ) : (
+          <>
+            {/* Summary Cards */}
+            <SummaryCards />
 
         {/* Filter Bar */}
         <FilterBar />
@@ -175,6 +196,8 @@ export default function Home() {
             <ProjectionPanel />
           </div>
         </div>
+          </>
+        )}
       </main>
 
       {/* Footer */}

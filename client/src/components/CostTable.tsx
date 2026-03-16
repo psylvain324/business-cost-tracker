@@ -4,7 +4,14 @@
  */
 
 import { useCosts } from "@/contexts/CostContext";
-import { formatCurrency, type CostItem, type CostCategory } from "@/lib/costData";
+import {
+  formatCurrency,
+  getRecurringPaymentsCount,
+  getRecurringTotalPaid,
+  getRecurringPaidSummary,
+  type CostItem,
+  type CostCategory,
+} from "@/lib/costData";
 import { motion, AnimatePresence } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,11 +26,14 @@ import {
   Lightbulb,
   Zap,
   Trash2,
+  Pencil,
   Info,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
+import EditCostDialog from "./EditCostDialog";
 
 const statusConfig = {
   paid: {
@@ -67,8 +77,9 @@ const categoryConfig: Record<CostCategory, { title: string; description: string;
 };
 
 function CostRow({ item, index }: { item: CostItem; index: number }) {
-  const { toggleStatus, removeCost } = useCosts();
+  const { toggleStatus, removeCost, updateCost } = useCosts();
   const [expanded, setExpanded] = useState(false);
+  const [editingItem, setEditingItem] = useState<CostItem | null>(null);
   const status = statusConfig[item.status];
   const StatusIcon = status.icon;
 
@@ -136,6 +147,11 @@ function CostRow({ item, index }: { item: CostItem; index: number }) {
                 {formatCurrency(item.monthlyCost)}
                 <span className="text-[10px] text-muted-foreground ml-1">/mo</span>
               </div>
+              {item.recurringStartDate && (
+                <div className="text-[10px] text-emerald-glow stat-number">
+                  {getRecurringPaymentsCount(item.recurringStartDate)} paid · {formatCurrency(getRecurringTotalPaid(item))} total
+                </div>
+              )}
               {item.monthlyLow !== undefined && item.monthlyHigh !== undefined && (
                 <div className="text-[10px] text-muted-foreground stat-number">
                   {formatCurrency(item.monthlyLow)}–{formatCurrency(item.monthlyHigh)} range
@@ -169,7 +185,7 @@ function CostRow({ item, index }: { item: CostItem; index: number }) {
                 </p>
               </div>
               {!item.isOneTime && (
-                <div className="flex gap-4 text-xs text-muted-foreground">
+                <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                   <span>
                     Annual: <span className="stat-number text-foreground">{formatCurrency(item.annualCost)}</span>
                   </span>
@@ -185,15 +201,49 @@ function CostRow({ item, index }: { item: CostItem; index: number }) {
                       {item.priority}
                     </span>
                   </span>
+                  {item.category === "recurring" && (
+                    <span className="flex items-center gap-2">
+                      Start date:{" "}
+                      <input
+                        type="date"
+                        value={item.recurringStartDate ?? ""}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          const val = e.target.value || undefined;
+                          updateCost(item.id, { recurringStartDate: val }).catch(() =>
+                            toast.error("Failed to update start date")
+                          );
+                        }}
+                        className="text-foreground bg-secondary border border-border rounded px-2 py-1 text-xs"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </span>
+                  )}
                 </div>
               )}
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={(e) => {
                     e.stopPropagation();
-                    removeCost(item.id);
+                    setEditingItem(item);
+                  }}
+                  className="h-7 text-xs text-foreground hover:bg-secondary"
+                >
+                  <Pencil className="w-3 h-3 mr-1" />
+                  Edit
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      await removeCost(item.id);
+                    } catch {
+                      toast.error("Failed to remove cost");
+                    }
                   }}
                   className="text-destructive hover:text-destructive hover:bg-destructive/10 h-7 text-xs"
                 >
@@ -205,6 +255,12 @@ function CostRow({ item, index }: { item: CostItem; index: number }) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <EditCostDialog
+        item={editingItem}
+        open={!!editingItem}
+        onOpenChange={(open) => !open && setEditingItem(null)}
+      />
     </motion.div>
   );
 }
@@ -224,6 +280,8 @@ function CategorySection({ category }: { category: CostCategory }) {
     (sum, c) => sum + (c.isOneTime ? c.oneTimeCost : 0),
     0
   );
+  const paidSummary =
+    category === "recurring" ? getRecurringPaidSummary(filteredCosts) : null;
 
   return (
     <motion.div
@@ -238,7 +296,12 @@ function CategorySection({ category }: { category: CostCategory }) {
             <h3 className="text-base font-semibold text-foreground">{config.title}</h3>
             <p className="text-xs text-muted-foreground mt-0.5">{config.description}</p>
           </div>
-          <div className="text-right">
+          <div className="text-right space-y-0.5">
+            {paidSummary && paidSummary.totalPayments > 0 && (
+              <div className="stat-number text-xs font-medium text-emerald-glow">
+                {paidSummary.totalPayments} paid · {formatCurrency(paidSummary.totalAmount)} total
+              </div>
+            )}
             {totalOneTime > 0 && (
               <div className="stat-number text-sm font-semibold text-emerald-glow">
                 {formatCurrency(totalOneTime)} <span className="text-[10px] text-muted-foreground">total</span>

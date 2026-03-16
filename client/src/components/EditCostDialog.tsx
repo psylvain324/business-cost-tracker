@@ -1,9 +1,9 @@
 /*
- * AddCostDialog — Modal for adding new cost items
+ * EditCostDialog — Modal for editing existing cost items
  * Design: Command Deck — Dark Executive Dashboard
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCosts } from "@/contexts/CostContext";
 import type { CostItem, CostCategory, CostStatus, CostPriority } from "@/lib/costData";
 import {
@@ -11,7 +11,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,12 +22,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
-export default function AddCostDialog() {
-  const { addCost } = useCosts();
-  const [open, setOpen] = useState(false);
+interface EditCostDialogProps {
+  item: CostItem | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export default function EditCostDialog({ item, open, onOpenChange }: EditCostDialogProps) {
+  const { updateCost } = useCosts();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<CostCategory>("recurring");
@@ -41,21 +44,24 @@ export default function AddCostDialog() {
   const [tag, setTag] = useState("Business Operations");
   const [notes, setNotes] = useState("");
 
-  const resetForm = () => {
-    setName("");
-    setDescription("");
-    setCategory("recurring");
-    setStatus("pending");
-    setPriority("important");
-    setMonthlyCost("");
-    setIsOneTime(false);
-    setOneTimeCost("");
-    setRecurringStartDate("");
-    setTag("Business Operations");
-    setNotes("");
-  };
+  useEffect(() => {
+    if (item) {
+      setName(item.name);
+      setDescription(item.description);
+      setCategory(item.category);
+      setStatus(item.status);
+      setPriority(item.priority);
+      setMonthlyCost(item.isOneTime ? "" : String(item.monthlyCost));
+      setIsOneTime(item.isOneTime);
+      setOneTimeCost(item.isOneTime ? String(item.oneTimeCost) : "");
+      setRecurringStartDate(item.recurringStartDate ?? "");
+      setTag(item.tag);
+      setNotes(item.notes);
+    }
+  }, [item, open]);
 
   const handleSubmit = async () => {
+    if (!item) return;
     if (!name.trim()) {
       toast.error("Please enter a cost name");
       return;
@@ -64,8 +70,7 @@ export default function AddCostDialog() {
     const monthly = parseFloat(monthlyCost) || 0;
     const oneTime = parseFloat(oneTimeCost) || 0;
 
-    const newCost: CostItem = {
-      id: `custom-${Date.now()}`,
+    const updates: Partial<CostItem> = {
       name: name.trim(),
       description: description.trim() || name.trim(),
       category,
@@ -77,34 +82,27 @@ export default function AddCostDialog() {
       oneTimeCost: isOneTime ? oneTime : 0,
       notes: notes.trim() || "Custom cost entry.",
       tag,
-      ...(category === "recurring" && !isOneTime && recurringStartDate
-        ? { recurringStartDate }
-        : {}),
+      recurringStartDate:
+        category === "recurring" && !isOneTime && recurringStartDate
+          ? recurringStartDate
+          : undefined,
     };
 
     try {
-      await addCost(newCost);
-      resetForm();
-      setOpen(false);
+      await updateCost(item.id, updates);
+      onOpenChange(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to add cost");
+      toast.error(e instanceof Error ? e.message : "Failed to update cost");
     }
   };
 
+  if (!item) return null;
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
-          size="sm"
-        >
-          <Plus className="w-4 h-4" />
-          Add Cost
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-card border-border text-card-foreground max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-foreground">Add New Cost</DialogTitle>
+          <DialogTitle className="text-foreground">Edit Cost</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 mt-2">
           <div className="space-y-1.5">
@@ -259,7 +257,7 @@ export default function AddCostDialog() {
           <div className="flex gap-2 pt-2">
             <Button
               variant="outline"
-              onClick={() => setOpen(false)}
+              onClick={() => onOpenChange(false)}
               className="flex-1 border-border text-foreground bg-transparent"
             >
               Cancel
@@ -268,7 +266,7 @@ export default function AddCostDialog() {
               onClick={handleSubmit}
               className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
             >
-              Add Cost
+              Save Changes
             </Button>
           </div>
         </div>

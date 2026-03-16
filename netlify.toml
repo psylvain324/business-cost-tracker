@@ -1,0 +1,10 @@
+# Netlify configuration for static SPA deployment
+[build]
+  command = "npm run build:netlify"
+  publish = "dist/public"
+
+# SPA client-side routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

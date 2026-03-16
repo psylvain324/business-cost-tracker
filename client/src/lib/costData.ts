@@ -23,6 +23,8 @@ export interface CostItem {
   monthlyHigh?: number;
   notes: string;
   tag: string;
+  /** Start date for recurring charges (YYYY-MM-DD). Used to compute payments count and total paid. */
+  recurringStartDate?: string;
 }
 
 export const initialCosts: CostItem[] = [
@@ -366,6 +368,41 @@ export function getTotalAnnualAll(costs: CostItem[]) {
 
 export function getUniqueTags(costs: CostItem[]) {
   return Array.from(new Set(costs.map((c) => c.tag)));
+}
+
+/** Number of monthly payments since recurring start date (inclusive of current month). */
+export function getRecurringPaymentsCount(startDate: string): number {
+  const start = new Date(startDate + "T00:00:00");
+  const now = new Date();
+  if (start > now) return 0;
+  const months =
+    (now.getFullYear() - start.getFullYear()) * 12 +
+    (now.getMonth() - start.getMonth()) +
+    1;
+  return Math.max(0, months);
+}
+
+/** Total amount paid for a recurring item based on start date. */
+export function getRecurringTotalPaid(item: CostItem): number {
+  if (item.isOneTime || !item.recurringStartDate) return 0;
+  const count = getRecurringPaymentsCount(item.recurringStartDate);
+  return count * item.monthlyCost;
+}
+
+/** Summary of paid recurring items: { count, totalAmount }. */
+export function getRecurringPaidSummary(costs: CostItem[]) {
+  const recurringWithStart = costs.filter(
+    (c) => c.category === "recurring" && !c.isOneTime && c.recurringStartDate
+  );
+  const totalPayments = recurringWithStart.reduce(
+    (sum, c) => sum + getRecurringPaymentsCount(c.recurringStartDate!),
+    0
+  );
+  const totalAmount = recurringWithStart.reduce(
+    (sum, c) => sum + getRecurringTotalPaid(c),
+    0
+  );
+  return { itemCount: recurringWithStart.length, totalPayments, totalAmount };
 }
 
 export function getCostsByTag(costs: CostItem[], tag: string) {
