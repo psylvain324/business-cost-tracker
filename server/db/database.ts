@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { CostItem } from "../../shared/api-types";
+import { initialCosts } from "../../client/src/lib/costData.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,8 +25,28 @@ export function getDb(): Database.Database {
     ensureDataDir();
     db = new Database(DB_PATH);
     initSchema(db);
+    seedIfEmpty(db);
   }
   return db;
+}
+
+function seedIfEmpty(sqlite: Database.Database) {
+  const row = sqlite.prepare("SELECT COUNT(*) as n FROM costs").get() as { n: number };
+  if (row.n > 0) return;
+  const stmt = sqlite.prepare(`
+    INSERT INTO costs (id, name, description, category, status, priority,
+      monthly_cost, annual_cost, is_one_time, one_time_cost,
+      monthly_low, monthly_high, notes, tag, recurring_start_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const c of initialCosts) {
+    stmt.run(
+      c.id, c.name, c.description, c.category, c.status, c.priority,
+      c.monthlyCost, c.annualCost, c.isOneTime ? 1 : 0, c.oneTimeCost,
+      c.monthlyLow ?? null, c.monthlyHigh ?? null, c.notes ?? "", c.tag ?? "",
+      c.recurringStartDate ?? null
+    );
+  }
 }
 
 function initSchema(sqlite: Database.Database) {
