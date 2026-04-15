@@ -4,9 +4,16 @@
  * Categories: startup (one-time), recurring (monthly), anticipated (recommended)
  */
 
-export type CostStatus = "paid" | "active" | "pending" | "recommended";
+export type CostStatus = "paid" | "active" | "inactive" | "pending" | "recommended";
 export type CostCategory = "startup" | "recurring" | "anticipated";
 export type CostPriority = "essential" | "important" | "optional";
+export type RecurringBillingFrequency = "monthly" | "annual";
+
+export interface RecurringActivityPeriod {
+  startDate: string;
+  endDate?: string;
+  restartDate?: string;
+}
 
 export interface CostItem {
   id: string;
@@ -23,8 +30,11 @@ export interface CostItem {
   monthlyHigh?: number;
   notes: string;
   tag: string;
+  paidDate?: string;
   /** Start date for recurring charges (YYYY-MM-DD). Used to compute payments count and total paid. */
   recurringStartDate?: string;
+  billingFrequency?: RecurringBillingFrequency;
+  activePeriods?: RecurringActivityPeriod[];
 }
 
 export const initialCosts: CostItem[] = [
@@ -40,6 +50,7 @@ export const initialCosts: CostItem[] = [
     annualCost: 0,
     isOneTime: true,
     oneTimeCost: 135,
+    paidDate: "2026-04-15",
     notes: "Already paid. One-time cost for business formation.",
     tag: "Legal",
   },
@@ -370,32 +381,129 @@ export function getUniqueTags(costs: CostItem[]) {
   return Array.from(new Set(costs.map((c) => c.tag)));
 }
 
+function parseLocalDate(date: string): Date | null {
+  if (!date) return null;
+  const parsed = new Date(date + "T00:00:00");
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getPaidDateYear(item: CostItem): number {
+  const paidDate = item.paidDate ? parseLocalDate(item.paidDate) : null;
+  return paidDate ? paidDate.getFullYear() : getCurrentTaxYear();
+}
+
+function toMonthStart(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, months: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function getBillingFrequency(item: CostItem): RecurringBillingFrequency {
+  return item.billingFrequency === "annual" ? "annual" : "monthly";
+}
+
+export function getRecurringPaymentAmount(item: CostItem): number {
+  if (item.isOneTime) return 0;
+  return getBillingFrequency(item) === "annual"
+    ? item.annualCost || item.monthlyCost * 12
+    : item.monthlyCost;
+}
+
+export function getRecurringActivityPeriods(item: CostItem): RecurringActivityPeriod[] {
+  if (item.activePeriods?.length) {
+    return item.activePeriods
+      .filter((period) => period.startDate)
+      .slice()
+      .sort((a, b) => a.startDate.localeCompare(b.startDate));
+  }
+  return item.recurringStartDate ? [{ startDate: item.recurringStartDate }] : [];
+}
+
+export function getTaxYear(date: Date): number {
+  return date.getFullYear();
+}
+
+export function getCurrentTaxYear(): number {
+  return getTaxYear(new Date());
+}
+
+export interface RecurringPaymentEvent {
+  itemId: string;
+  itemName: string;
+  date: string;
+  year: number;
+  month: number;
+  amount: number;
+  billingFrequency: RecurringBillingFrequency;
+}
+
+export function getRecurringPaymentEvents(
+  item: CostItem,
+  upto: Date = new Date()
+): RecurringPaymentEvent[] {
+  if (item.isOneTime) return [];
+  const amount = getRecurringPaymentAmount(item);
+  if (amount <= 0) return [];
+
+  const stepMonths = getBillingFrequency(item) === "annual" ? 12 : 1;
+  const cutoff = toMonthStart(upto);
+
+  return getRecurringActivityPeriods(item).flatMap((period) => {
+    const start = parseLocalDate(period.startDate);
+    if (!start) return [];
+
+    const periodEnd = period.endDate ? parseLocalDate(period.endDate) : cutoff;
+    if (!periodEnd) return [];
+
+    const first = toMonthStart(start);
+    const last = toMonthStart(periodEnd < cutoff ? periodEnd : cutoff);
+    if (first > last) return [];
+
+    const events: RecurringPaymentEvent[] = [];
+    for (let cur = first; cur <= last; cur = addMonths(cur, stepMonths)) {
+      events.push({
+        itemId: item.id,
+        itemName: item.name,
+        date: `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-01`,
+        year: cur.getFullYear(),
+        month: cur.getMonth(),
+        amount,
+        billingFrequency: getBillingFrequency(item),
+      });
+    }
+    return events;
+  });
+}
+
 /** Number of monthly payments since recurring start date (inclusive of current month). */
-export function getRecurringPaymentsCount(startDate: string): number {
+export function getRecurringPaymentsCount(
+  startDate: string,
+  billingFrequency: RecurringBillingFrequency = "monthly"
+): number {
   const start = new Date(startDate + "T00:00:00");
   const now = new Date();
   if (start > now) return 0;
-  const months =
+  const monthsElapsed =
     (now.getFullYear() - start.getFullYear()) * 12 +
-    (now.getMonth() - start.getMonth()) +
-    1;
-  return Math.max(0, months);
+    (now.getMonth() - start.getMonth());
+  const step = billingFrequency === "annual" ? 12 : 1;
+  return Math.max(0, Math.floor(monthsElapsed / step) + 1);
 }
 
 /** Total amount paid for a recurring item based on start date. */
 export function getRecurringTotalPaid(item: CostItem): number {
-  if (item.isOneTime || !item.recurringStartDate) return 0;
-  const count = getRecurringPaymentsCount(item.recurringStartDate);
-  return count * item.monthlyCost;
+  return getRecurringPaymentEvents(item).reduce((sum, event) => sum + event.amount, 0);
 }
 
 /** Summary of paid recurring items: { count, totalAmount }. */
 export function getRecurringPaidSummary(costs: CostItem[]) {
   const recurringWithStart = costs.filter(
-    (c) => c.category === "recurring" && !c.isOneTime && c.recurringStartDate
+    (c) => c.category === "recurring" && !c.isOneTime && getRecurringActivityPeriods(c).length > 0
   );
   const totalPayments = recurringWithStart.reduce(
-    (sum, c) => sum + getRecurringPaymentsCount(c.recurringStartDate!),
+    (sum, c) => sum + getRecurringPaymentEvents(c).length,
     0
   );
   const totalAmount = recurringWithStart.reduce(
@@ -403,6 +511,78 @@ export function getRecurringPaidSummary(costs: CostItem[]) {
     0
   );
   return { itemCount: recurringWithStart.length, totalPayments, totalAmount };
+}
+
+const MONTH_NAMES = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/** Return an array of { year, monthIndex } for every monthly payment since start (inclusive). */
+export function getPaidMonthsSinceStart(startDate: string, upto: Date = new Date()) {
+  const start = new Date(startDate + "T00:00:00");
+  if (start > upto) return [];
+  const months: { year: number; month: number }[] = [];
+  let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+  const end = new Date(upto.getFullYear(), upto.getMonth(), 1);
+  while (cur <= end) {
+    months.push({ year: cur.getFullYear(), month: cur.getMonth() });
+    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+  }
+  return months;
+}
+
+/** Group paid months by year and return an ordered object { [year]: string[] } (months short names). */
+export function getPaidMonthsGrouped(item: CostItem, upto: Date = new Date()) {
+  if (item.isOneTime) return {} as Record<number, string[]>;
+  const months = getRecurringPaymentEvents(item, upto);
+  const grouped: Record<number, string[]> = {};
+  months.forEach(({ year, month, billingFrequency }) => {
+    grouped[year] = grouped[year] || [];
+    grouped[year].push(billingFrequency === "annual" ? `${MONTH_NAMES[month]} annual` : MONTH_NAMES[month]);
+  });
+  return grouped;
+}
+
+export function getPaidItems(costs: CostItem[]) {
+  return costs.filter((c) => c.status === "paid" || getRecurringTotalPaid(c) > 0);
+}
+
+export function getPaidTotalForItem(item: CostItem): number {
+  const oneTimePaid = item.isOneTime && item.status === "paid" ? item.oneTimeCost : 0;
+  return oneTimePaid + getRecurringTotalPaid(item);
+}
+
+export function getPaidTotalsByTaxYear(costs: CostItem[], upto: Date = new Date()) {
+  const totals: Record<number, number> = {};
+
+  costs.forEach((item) => {
+    if (item.isOneTime && item.status === "paid") {
+      const year = getPaidDateYear(item);
+      totals[year] = (totals[year] || 0) + item.oneTimeCost;
+      return;
+    }
+
+    getRecurringPaymentEvents(item, upto).forEach((event) => {
+      totals[event.year] = (totals[event.year] || 0) + event.amount;
+    });
+  });
+
+  return totals;
+}
+
+export function getPaidTotal(costs: CostItem[]) {
+  return Object.values(getPaidTotalsByTaxYear(costs)).reduce((sum, amount) => sum + amount, 0);
+}
+
+export function getAvailableTaxYears(costs: CostItem[]) {
+  const years = new Set<number>([getCurrentTaxYear()]);
+  Object.keys(getPaidTotalsByTaxYear(costs)).forEach((year) => years.add(Number(year)));
+  return Array.from(years).sort((a, b) => b - a);
+}
+
+export function getPaidTotalForTaxYear(costs: CostItem[], year: number) {
+  return getPaidTotalsByTaxYear(costs)[year] || 0;
 }
 
 export function getCostsByTag(costs: CostItem[], tag: string) {

@@ -5,7 +5,13 @@
 
 import { useState } from "react";
 import { useCosts } from "@/contexts/CostContext";
-import type { CostItem, CostCategory, CostStatus, CostPriority } from "@/lib/costData";
+import type {
+  CostItem,
+  CostCategory,
+  CostStatus,
+  CostPriority,
+  RecurringBillingFrequency,
+} from "@/lib/costData";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +32,10 @@ import {
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function AddCostDialog() {
   const { addCost } = useCosts();
   const [open, setOpen] = useState(false);
@@ -34,10 +44,13 @@ export default function AddCostDialog() {
   const [category, setCategory] = useState<CostCategory>("recurring");
   const [status, setStatus] = useState<CostStatus>("pending");
   const [priority, setPriority] = useState<CostPriority>("important");
+  const [billingFrequency, setBillingFrequency] =
+    useState<RecurringBillingFrequency>("monthly");
   const [monthlyCost, setMonthlyCost] = useState("");
   const [isOneTime, setIsOneTime] = useState(false);
   const [oneTimeCost, setOneTimeCost] = useState("");
   const [recurringStartDate, setRecurringStartDate] = useState("");
+  const [paidDate, setPaidDate] = useState(todayIso());
   const [tag, setTag] = useState("Business Operations");
   const [notes, setNotes] = useState("");
 
@@ -47,10 +60,12 @@ export default function AddCostDialog() {
     setCategory("recurring");
     setStatus("pending");
     setPriority("important");
+    setBillingFrequency("monthly");
     setMonthlyCost("");
     setIsOneTime(false);
     setOneTimeCost("");
     setRecurringStartDate("");
+    setPaidDate(todayIso());
     setTag("Business Operations");
     setNotes("");
   };
@@ -61,7 +76,9 @@ export default function AddCostDialog() {
       return;
     }
 
-    const monthly = parseFloat(monthlyCost) || 0;
+    const enteredCost = parseFloat(monthlyCost) || 0;
+    const monthly = billingFrequency === "annual" ? enteredCost / 12 : enteredCost;
+    const annual = billingFrequency === "annual" ? enteredCost : monthly * 12;
     const oneTime = parseFloat(oneTimeCost) || 0;
 
     const newCost: CostItem = {
@@ -72,13 +89,20 @@ export default function AddCostDialog() {
       status,
       priority,
       monthlyCost: isOneTime ? 0 : monthly,
-      annualCost: isOneTime ? 0 : monthly * 12,
+      annualCost: isOneTime ? 0 : annual,
       isOneTime,
       oneTimeCost: isOneTime ? oneTime : 0,
+      paidDate: status === "paid" ? paidDate || todayIso() : undefined,
       notes: notes.trim() || "Custom cost entry.",
       tag,
       ...(category === "recurring" && !isOneTime && recurringStartDate
-        ? { recurringStartDate }
+        ? {
+            recurringStartDate,
+            billingFrequency,
+            activePeriods: [{ startDate: recurringStartDate }],
+          }
+        : category === "recurring" && !isOneTime
+          ? { billingFrequency }
         : {}),
     };
 
@@ -219,15 +243,34 @@ export default function AddCostDialog() {
             </div>
           ) : (
             <>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Monthly Cost ($)</Label>
-                <Input
-                  type="number"
-                  value={monthlyCost}
-                  onChange={(e) => setMonthlyCost(e.target.value)}
-                  placeholder="0.00"
-                  className="bg-secondary border-border text-foreground stat-number"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Billing</Label>
+                  <Select
+                    value={billingFrequency}
+                    onValueChange={(v) => setBillingFrequency(v as RecurringBillingFrequency)}
+                  >
+                    <SelectTrigger className="bg-secondary border-border text-foreground">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="annual">Annual</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">
+                    {billingFrequency === "annual" ? "Annual Cost ($)" : "Monthly Cost ($)"}
+                  </Label>
+                  <Input
+                    type="number"
+                    value={monthlyCost}
+                    onChange={(e) => setMonthlyCost(e.target.value)}
+                    placeholder="0.00"
+                    className="bg-secondary border-border text-foreground stat-number"
+                  />
+                </div>
               </div>
               {category === "recurring" && (
                 <div className="space-y-1.5">
@@ -244,6 +287,18 @@ export default function AddCostDialog() {
                 </div>
               )}
             </>
+          )}
+
+          {status === "paid" && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Paid Date</Label>
+              <Input
+                type="date"
+                value={paidDate}
+                onChange={(e) => setPaidDate(e.target.value)}
+                className="bg-secondary border-border text-foreground"
+              />
+            </div>
           )}
 
           <div className="space-y-1.5">

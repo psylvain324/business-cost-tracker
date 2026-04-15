@@ -3,9 +3,16 @@
  * Shared between client and API - ensure request/response shapes match.
  */
 
-export type CostStatus = "paid" | "active" | "pending" | "recommended";
+export type CostStatus = "paid" | "active" | "inactive" | "pending" | "recommended";
 export type CostCategory = "startup" | "recurring" | "anticipated";
 export type CostPriority = "essential" | "important" | "optional";
+export type RecurringBillingFrequency = "monthly" | "annual";
+
+export interface RecurringActivityPeriod {
+  startDate: string;
+  endDate?: string;
+  restartDate?: string;
+}
 
 export interface CostItem {
   id: string;
@@ -22,7 +29,10 @@ export interface CostItem {
   monthlyHigh?: number;
   notes: string;
   tag: string;
+  paidDate?: string;
   recurringStartDate?: string;
+  billingFrequency?: RecurringBillingFrequency;
+  activePeriods?: RecurringActivityPeriod[];
 }
 
 /** Body for creating a new cost (id optional, server may generate) */

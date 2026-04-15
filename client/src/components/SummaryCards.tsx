@@ -5,7 +5,6 @@
 
 import { useCosts } from "@/contexts/CostContext";
 import {
-  getTotalStartupCost,
   getTotalMonthlyRecurring,
   getTotalMonthlyAnticipated,
   getTotalAnnualAll,
@@ -13,6 +12,9 @@ import {
   formatCurrency,
   getRecurringCosts,
   getAnticipatedCosts,
+  getPaidTotal,
+  getCurrentTaxYear,
+  getPaidTotalForTaxYear,
 } from "@/lib/costData";
 import { motion } from "framer-motion";
 import { DollarSign, TrendingUp, CalendarClock, Layers } from "lucide-react";
@@ -29,7 +31,9 @@ const cardVariants = {
 export default function SummaryCards() {
   const { costs } = useCosts();
 
-  const startupTotal = getTotalStartupCost(costs);
+  const paidTotal = getPaidTotal(costs);
+  const currentTaxYear = getCurrentTaxYear();
+  const currentTaxYearPaid = getPaidTotalForTaxYear(costs, currentTaxYear);
   const monthlyRecurring = getTotalMonthlyRecurring(costs);
   const monthlyAnticipated = getTotalMonthlyAnticipated(costs);
   const monthlyAll = getTotalMonthlyAll(costs);
@@ -39,9 +43,9 @@ export default function SummaryCards() {
 
   const cards = [
     {
-      label: "Startup Costs",
-      value: formatCurrency(startupTotal),
-      sublabel: "One-time paid",
+      label: "Total Paid",
+      value: formatCurrency(paidTotal),
+      sublabel: `${formatCurrency(currentTaxYearPaid)} in ${currentTaxYear}`,
       icon: DollarSign,
       glowClass: "glow-emerald",
       accentColor: "text-emerald-glow",

@@ -45,10 +45,10 @@ interface CostContextType {
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
-  addCost: (cost: CostItem) => void | Promise<void>;
-  updateCost: (id: string, updates: Partial<CostItem>) => void | Promise<void>;
-  removeCost: (id: string) => void | Promise<void>;
-  toggleStatus: (id: string) => void | Promise<void>;
+  addCost: (cost: CostItem) => Promise<void>;
+  updateCost: (id: string, updates: Partial<CostItem>) => Promise<void>;
+  removeCost: (id: string) => Promise<void>;
+  toggleStatus: (id: string) => Promise<void>;
   activeFilter: CostCategory | "all";
   setActiveFilter: (filter: CostCategory | "all") => void;
   searchQuery: string;
@@ -137,7 +137,8 @@ export function CostProvider({ children }: { children: ReactNode }) {
       const statusCycle: Record<CostStatus, CostStatus> = {
         recommended: "pending",
         pending: "active",
-        active: "paid",
+        active: "inactive",
+        inactive: "active",
         paid: "active",
       };
       const item = costs.find((c) => c.id === id);

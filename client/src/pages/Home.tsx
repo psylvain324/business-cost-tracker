@@ -20,7 +20,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useCosts } from "@/contexts/CostContext";
-import { formatCurrency, getTotalMonthlyAll, getTotalAnnualAll, getTotalStartupCost } from "@/lib/costData";
+import { formatCurrency, getTotalMonthlyAll, getTotalAnnualAll, getPaidTotal } from "@/lib/costData";
 import { toast } from "sonner";
 
 const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663397693691/2FEnuq8s4HzSDKy69vebiX/hero-abstract-dark-L4PDgFVhuMReh59i3JirKy.webp";
@@ -35,9 +35,10 @@ function exportToCSV(costs: Array<{
   isOneTime: boolean;
   oneTimeCost: number;
   tag: string;
+  paidDate?: string;
   notes: string;
 }>) {
-  const headers = ["Name", "Category", "Status", "Priority", "Monthly Cost", "Annual Cost", "One-Time Cost", "Tag", "Notes"];
+  const headers = ["Name", "Category", "Status", "Priority", "Monthly Cost", "Annual Cost", "One-Time Cost", "Tag", "Paid Date", "Notes"];
   const rows = costs.map((c) => [
     c.name,
     c.category,
@@ -47,6 +48,7 @@ function exportToCSV(costs: Array<{
     c.isOneTime ? "0" : c.annualCost.toFixed(2),
     c.isOneTime ? c.oneTimeCost.toFixed(2) : "0",
     c.tag,
+    c.paidDate ?? "",
     `"${c.notes.replace(/"/g, '""')}"`,
   ]);
 
@@ -122,10 +124,10 @@ export default function Home() {
             <div className="flex flex-wrap gap-6 mt-5 pt-4 border-t border-border/30">
               <div>
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                  Startup Invested
+                  Total Paid
                 </span>
                 <div className="stat-number text-lg font-bold text-emerald-glow">
-                  {formatCurrency(getTotalStartupCost(costs))}
+                  {formatCurrency(getPaidTotal(costs))}
                 </div>
               </div>
               <div>

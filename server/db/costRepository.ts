@@ -6,6 +6,16 @@ import type { CostItem, CreateCostBody, UpdateCostBody } from "../../shared/api-
 import { getDb } from "./database.js";
 import { nanoid } from "nanoid";
 
+function parseActivePeriods(value: unknown): CostItem["activePeriods"] {
+  if (typeof value !== "string" || !value) return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function rowToCost(row: Record<string, unknown>): CostItem {
   return {
     id: String(row.id),
@@ -22,8 +32,14 @@ function rowToCost(row: Record<string, unknown>): CostItem {
     monthlyHigh: row.monthly_high != null ? Number(row.monthly_high) : undefined,
     notes: String(row.notes ?? ""),
     tag: String(row.tag ?? ""),
+    paidDate: row.paid_date != null ? String(row.paid_date) : undefined,
     recurringStartDate:
       row.recurring_start_date != null ? String(row.recurring_start_date) : undefined,
+    billingFrequency:
+      row.billing_frequency === "annual" || row.billing_frequency === "monthly"
+        ? row.billing_frequency
+        : undefined,
+    activePeriods: parseActivePeriods(row.active_periods),
   };
 }
 
@@ -47,8 +63,8 @@ export function createCost(body: CreateCostBody): CostItem {
       `INSERT INTO costs (
         id, name, description, category, status, priority,
         monthly_cost, annual_cost, is_one_time, one_time_cost,
-        monthly_low, monthly_high, notes, tag, recurring_start_date
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        monthly_low, monthly_high, notes, tag, paid_date, recurring_start_date, billing_frequency, active_periods
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
@@ -65,7 +81,10 @@ export function createCost(body: CreateCostBody): CostItem {
       body.monthlyHigh ?? null,
       body.notes ?? "",
       body.tag ?? "",
-      body.recurringStartDate ?? null
+      body.paidDate ?? null,
+      body.recurringStartDate ?? null,
+      body.billingFrequency ?? null,
+      body.activePeriods ? JSON.stringify(body.activePeriods) : null
     );
   return getCostById(id)!;
 }
@@ -86,7 +105,8 @@ export function updateCost(id: string, body: UpdateCostBody): CostItem | null {
       `UPDATE costs SET
         name = ?, description = ?, category = ?, status = ?, priority = ?,
         monthly_cost = ?, annual_cost = ?, is_one_time = ?, one_time_cost = ?,
-        monthly_low = ?, monthly_high = ?, notes = ?, tag = ?, recurring_start_date = ?,
+        monthly_low = ?, monthly_high = ?, notes = ?, tag = ?, paid_date = ?, recurring_start_date = ?,
+        billing_frequency = ?, active_periods = ?,
         updated_at = datetime('now')
       WHERE id = ?`
     )
@@ -104,7 +124,10 @@ export function updateCost(id: string, body: UpdateCostBody): CostItem | null {
       merged.monthlyHigh ?? null,
       merged.notes,
       merged.tag,
+      merged.paidDate ?? null,
       merged.recurringStartDate ?? null,
+      merged.billingFrequency ?? null,
+      merged.activePeriods ? JSON.stringify(merged.activePeriods) : null,
       id
     );
   return getCostById(id);
